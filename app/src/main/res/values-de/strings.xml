@@ -28,7 +28,7 @@
     <string name="pref_webview_title">Browser</string>
     <string name="not_connected">nicht verbunden</string>
     <string name="pref_start_url">Startseite</string>
-    <string name="pref_start_url_summ">Die Webseite, die beim Start gezeigt werden soll. Falls leer, wird die openHAB URL als Startseite benutzt.</string>
+    <string name="pref_start_url_summ">Die Webseite, die beim Start gezeigt werden soll. Falls leer, wird die openHAB URL als Startseite benutzt</string>
     <string name="pref_restart">Automatischer Neustart</string>
     <string name="pref_max_restarts">Anzahl der erlaubten Neustarts</string>
     <string name="pref_max_restarts_summ">Die Anzahl der erlaubten Neustarts bevor der automatische Neustart deaktiviert wird</string>
@@ -36,6 +36,10 @@
     <string name="pref_restart_enabled_summ">HABPanelViewer wird bei einem Absturz automatisch neu gestartet</string>
     <string name="pref_menu_position">Menü Position</string>
     <string name="pref_menu_position_summ">Die Seite von der das Menü geöffnet werden kann</string>
+    <string name="pref_lock_menu">Menüsperre</string>
+    <string name="pref_lock_menu_summ">Aktiviert die PIN Eingabe zum Öffnen des Menüs. Wenn aktiviert, kann das Menü nicht mehr ausgeklappt werden. Ein Dreifachklick auf den Browser aktiviert die PIN Eingabe</string>
+    <string name="pref_lock_pin">PIN</string>
+    <string name="pref_lock_pin_summ">Die PIN Nummer zum Öffnen des Menüs</string>
 
     <string name="pref_command_item">Kommando Item</string>
     <string name="pref_command_item_summ">Name des openHAB Items in dem openHAB Kommandos an HABPanelViewer sendet</string>
@@ -197,4 +201,5 @@
     <string name="hours">%d Stunden,</string>
     <string name="minutes">%d Minuten,</string>
     <string name="seconds">%d Sekunden,</string>
+    <string name="menuLockRemoved">Menüsperre entfernt. Falls gewünscht, bitte wieder in den Einstellungen aktivieren</string>
 </resources>

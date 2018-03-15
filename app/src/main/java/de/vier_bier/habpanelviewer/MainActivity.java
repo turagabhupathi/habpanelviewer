@@ -26,6 +26,7 @@ import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.SurfaceView;
 import android.view.TextureView;
 import android.view.View;
@@ -97,6 +98,8 @@ public class MainActivity extends AppCompatActivity
     private TemperatureMonitor mTemperatureMonitor;
     private VolumeMonitor mVolumeMonitor;
     private CommandQueue mCommandQueue;
+
+    private TripleClickListener mTripleClickListener;
 
     private int mRestartCount;
 
@@ -328,6 +331,8 @@ public class MainActivity extends AppCompatActivity
                 }
             }
         });
+        mTripleClickListener = new TripleClickListener(findViewById(R.id.drawer_layout));
+        mWebView.setOnTouchListener(mTripleClickListener);
         mCommandQueue.addHandler(new WebViewHandler(mWebView));
     }
 
@@ -486,6 +491,16 @@ public class MainActivity extends AppCompatActivity
         } else {
             params.gravity = Gravity.END;
         }
+
+        boolean lockMenu = prefs.getBoolean("pref_lock_menu_enabled", false);
+        DrawerLayout dl = findViewById(R.id.drawer_layout);
+        if (lockMenu) {
+            dl.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
+        } else {
+            dl.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED);
+        }
+
+        mTripleClickListener.updateFromPreferences(prefs);
 
         if (mMotionDetector != null) {
             mMotionDetector.updateFromPreferences(prefs);

@@ -13,6 +13,7 @@
                 android:summary="@string/pref_restart_enabled_summ"
                 android:title="@string/pref_restart_enabled" />
             <EditTextPreference
+                android:dependency="pref_restart_enabled"
                 android:key="pref_max_restarts"
                 android:maxLength="2"
                 android:numeric="integer"
@@ -257,6 +258,22 @@
             android:key="pref_start_url"
             android:summary="@string/pref_start_url_summ"
             android:title="@string/pref_start_url" />
+        <PreferenceScreen
+            android:key="pref_lock_menu"
+            android:persistent="false"
+            android:title="@string/pref_lock_menu">
+            <CheckBoxPreference
+                android:defaultValue="false"
+                android:key="pref_lock_menu_enabled"
+                android:summary="@string/pref_lock_menu_summ"
+                android:title="@string/pref_lock_menu" />
+            <EditTextPreference
+                android:key="pref_lock_key"
+                android:dependency="pref_lock_menu_enabled"
+                android:numeric="integer"
+                android:summary="@string/pref_lock_pin_summ"
+                android:title="@string/pref_lock_pin" />
+        </PreferenceScreen>
     </PreferenceCategory>
     <PreferenceCategory
         android:key="pref_key_webview_settings"

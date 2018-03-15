@@ -42,7 +42,6 @@ import de.vier_bier.habpanelviewer.ssl.ConnectionUtil;
  */
 public class ClientWebView extends WebView {
     private boolean mAllowMixedContent;
-    private boolean mDraggingPrevented;
     private String mServerURL;
     private String mStartPage;
     private boolean mKioskMode;
@@ -220,8 +219,6 @@ public class ClientWebView extends WebView {
             }
         });
 
-        setOnTouchListener((v, event) -> (event.getAction() == MotionEvent.ACTION_MOVE && mDraggingPrevented));
-
         CookieManager.getInstance().setAcceptCookie(true);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true);
@@ -261,7 +258,6 @@ public class ClientWebView extends WebView {
     void updateFromPreferences(SharedPreferences prefs) {
         Boolean isDesktop = prefs.getBoolean("pref_desktop_mode", false);
         Boolean isJavascript = prefs.getBoolean("pref_javascript", false);
-        mDraggingPrevented = prefs.getBoolean("pref_prevent_dragging", false);
 
         WebSettings webSettings = getSettings();
         webSettings.setUseWideViewPort(isDesktop);
