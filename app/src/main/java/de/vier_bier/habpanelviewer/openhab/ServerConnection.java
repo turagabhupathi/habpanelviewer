@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.AsyncTask;
+import android.util.Base64;
 import android.util.Log;
 
 import org.json.JSONException;
@@ -22,7 +23,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import de.vier_bier.habpanelviewer.openhab.average.AveragePropagator;
-import de.vier_bier.habpanelviewer.openhab.average.StatePropagator;
+import de.vier_bier.habpanelviewer.openhab.average.IStatePropagator;
 import de.vier_bier.habpanelviewer.ssl.ConnectionUtil;
 import io.opensensors.sse.client.EventSource;
 import io.opensensors.sse.client.EventSourceHandler;
@@ -31,19 +32,19 @@ import io.opensensors.sse.client.MessageEvent;
 /**
  * Client for openHABs SSE service. Listens for item value changes.
  */
-public class ServerConnection implements StatePropagator {
+public class ServerConnection implements IStatePropagator {
     private final Context mCtx;
     private String mServerURL;
     private EventSource mEventSource;
     private final ConnectionUtil.CertChangedListener mCertListener;
 
-    private final HashMap<String, ArrayList<StateUpdateListener>> mSubscriptions = new HashMap<>();
-    private final HashMap<String, ArrayList<StateUpdateListener>> mCmdSubscriptions = new HashMap<>();
+    private final HashMap<String, ArrayList<IStateUpdateListener>> mSubscriptions = new HashMap<>();
+    private final HashMap<String, ArrayList<IStateUpdateListener>> mCmdSubscriptions = new HashMap<>();
     private final HashMap<String, String> mValues = new HashMap<>();
 
     private SSEHandler client;
     private FetchItemStateTask task;
-    private final ArrayList<ConnectionListener> connectionListeners = new ArrayList<>();
+    private final ArrayList<IConnectionListener> connectionListeners = new ArrayList<>();
     private final HashMap<String, String> lastUpdates = new HashMap<>();
     private final AveragePropagator averagePropagator = new AveragePropagator(this);
 
@@ -90,7 +91,7 @@ public class ServerConnection implements StatePropagator {
         super.finalize();
     }
 
-    public void addConnectionListener(ConnectionListener l) {
+    public void addConnectionListener(IConnectionListener l) {
         synchronized (connectionListeners) {
             if (!connectionListeners.contains(l)) {
                 connectionListeners.add(l);
@@ -99,16 +100,16 @@ public class ServerConnection implements StatePropagator {
     }
 
 
-    public void subscribeCommandItems(StateUpdateListener l, String... names) {
+    public void subscribeCommandItems(IStateUpdateListener l, String... names) {
         subscribeItems(mCmdSubscriptions, l, false, names);
     }
 
-    public void subscribeItems(StateUpdateListener l, String... names) {
+    public void subscribeItems(IStateUpdateListener l, String... names) {
         subscribeItems(mSubscriptions, l, true, names);
     }
 
-    private void subscribeItems(HashMap<String, ArrayList<StateUpdateListener>> subscriptions,
-                                StateUpdateListener l, boolean initialValue, String... names) {
+    private void subscribeItems(HashMap<String, ArrayList<IStateUpdateListener>> subscriptions,
+                                IStateUpdateListener l, boolean initialValue, String... names) {
         boolean itemsChanged = false;
 
         final HashSet<String> newItems = new HashSet<>();
@@ -120,7 +121,7 @@ public class ServerConnection implements StatePropagator {
 
         synchronized (subscriptions) {
             for (String name : new HashSet<>(subscriptions.keySet())) {
-                ArrayList<StateUpdateListener> listeners = subscriptions.get(name);
+                ArrayList<IStateUpdateListener> listeners = subscriptions.get(name);
                 if (listeners != null && listeners.contains(l) && !newItems.contains(name)) {
                     listeners.remove(l);
 
@@ -133,7 +134,7 @@ public class ServerConnection implements StatePropagator {
             }
 
             for (String name : newItems) {
-                ArrayList<StateUpdateListener> listeners = subscriptions.get(name);
+                ArrayList<IStateUpdateListener> listeners = subscriptions.get(name);
                 if (listeners == null) {
                     itemsChanged = true;
                     listeners = new ArrayList<>();
@@ -294,6 +295,12 @@ public class ServerConnection implements StatePropagator {
         }
     }
 
+    public void updateJpeg(String item, byte[] data) {
+        if (data != null) {
+            updateState(item, "data:image/jpeg;base64," + Base64.encodeToString(data, Base64.NO_WRAP));
+        }
+    }
+
     public void sendCurrentValues() {
         Log.v("Habpanelview", "Sending pending updates...");
         synchronized (lastUpdates) {
@@ -316,7 +323,7 @@ public class ServerConnection implements StatePropagator {
 
             if (!mConnected.getAndSet(true)) {
                 synchronized (connectionListeners) {
-                    for (ConnectionListener l : connectionListeners) {
+                    for (IConnectionListener l : connectionListeners) {
                         l.connected(mServerURL);
                     }
                 }
@@ -366,7 +373,7 @@ public class ServerConnection implements StatePropagator {
                 averagePropagator.clear();
 
                 synchronized (connectionListeners) {
-                    for (ConnectionListener l : connectionListeners) {
+                    for (IConnectionListener l : connectionListeners) {
                         l.disconnected();
                     }
                 }
@@ -392,7 +399,7 @@ public class ServerConnection implements StatePropagator {
                 }
             }
 
-            task = new FetchItemStateTask(mServerURL, new SubscriptionListener() {
+            task = new FetchItemStateTask(mServerURL, new ISubscriptionListener() {
                 @Override
                 public void itemUpdated(String name, String value) {
                     propagateItem(name, value);
@@ -417,17 +424,17 @@ public class ServerConnection implements StatePropagator {
             propagate(mCmdSubscriptions, name, value);
         }
 
-        private void propagate(HashMap<String, ArrayList<StateUpdateListener>> subscriptions, String name, String value) {
+        private void propagate(HashMap<String, ArrayList<IStateUpdateListener>> subscriptions, String name, String value) {
             mValues.put(name, value);
 
             Log.v("Habpanelview", "propagating item: " + name + "=" + value);
 
-            final ArrayList<StateUpdateListener> listeners;
+            final ArrayList<IStateUpdateListener> listeners;
             synchronized (subscriptions) {
                 listeners = subscriptions.get(name);
             }
 
-            for (StateUpdateListener l : listeners) {
+            for (IStateUpdateListener l : listeners) {
                 l.itemUpdated(name, value);
             }
         }

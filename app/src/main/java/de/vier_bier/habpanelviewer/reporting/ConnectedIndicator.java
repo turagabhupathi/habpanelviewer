@@ -12,14 +12,14 @@ import java.util.Date;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import de.vier_bier.habpanelviewer.R;
+import de.vier_bier.habpanelviewer.openhab.IStateUpdateListener;
 import de.vier_bier.habpanelviewer.openhab.ServerConnection;
-import de.vier_bier.habpanelviewer.openhab.StateUpdateListener;
 import de.vier_bier.habpanelviewer.status.ApplicationStatus;
 
 /**
  * Reports the current time to openHAB as an indicator for being connected.
  */
-public class ConnectedIndicator implements StateUpdateListener {
+public class ConnectedIndicator implements IStateUpdateListener {
     private boolean mEnabled;
     private String mStatusItem;
     private int mInterval;
@@ -91,6 +91,8 @@ public class ConnectedIndicator implements StateUpdateListener {
     }
 
     public synchronized void terminate() {
+        EventBus.getDefault().unregister(this);
+
         if (mReportConnection != null) {
             mReportConnection.stopReporting();
             mReportConnection = null;

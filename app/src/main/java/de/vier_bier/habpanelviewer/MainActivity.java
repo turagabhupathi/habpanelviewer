@@ -6,10 +6,14 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.graphics.Point;
 import android.hardware.SensorManager;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraManager;
 import android.media.AudioManager;
+import android.media.projection.MediaProjection;
+import android.media.projection.MediaProjectionManager;
 import android.net.nsd.NsdManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -19,7 +23,7 @@ import android.support.annotation.NonNull;
 import android.support.design.widget.NavigationView;
 import android.support.v4.view.GravityCompat;
 import android.support.v4.widget.DrawerLayout;
-import android.support.v7.app.AppCompatActivity;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.ContextMenu;
 import android.view.Gravity;
@@ -28,7 +32,6 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
-import android.view.TextureView;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.LinearLayout;
@@ -53,7 +56,7 @@ import de.vier_bier.habpanelviewer.command.VolumeHandler;
 import de.vier_bier.habpanelviewer.command.WebViewHandler;
 import de.vier_bier.habpanelviewer.command.log.CommandLogActivity;
 import de.vier_bier.habpanelviewer.help.HelpActivity;
-import de.vier_bier.habpanelviewer.openhab.ConnectionListener;
+import de.vier_bier.habpanelviewer.openhab.IConnectionListener;
 import de.vier_bier.habpanelviewer.openhab.ServerConnection;
 import de.vier_bier.habpanelviewer.openhab.ServerDiscovery;
 import de.vier_bier.habpanelviewer.reporting.BatteryMonitor;
@@ -64,9 +67,10 @@ import de.vier_bier.habpanelviewer.reporting.ProximityMonitor;
 import de.vier_bier.habpanelviewer.reporting.SensorMissingException;
 import de.vier_bier.habpanelviewer.reporting.TemperatureMonitor;
 import de.vier_bier.habpanelviewer.reporting.VolumeMonitor;
+import de.vier_bier.habpanelviewer.reporting.motion.Camera;
+import de.vier_bier.habpanelviewer.reporting.motion.CameraException;
 import de.vier_bier.habpanelviewer.reporting.motion.IMotionDetector;
 import de.vier_bier.habpanelviewer.reporting.motion.MotionDetector;
-import de.vier_bier.habpanelviewer.reporting.motion.MotionDetectorCamera2;
 import de.vier_bier.habpanelviewer.reporting.motion.MotionVisualizer;
 import de.vier_bier.habpanelviewer.settings.SetPreferenceActivity;
 import de.vier_bier.habpanelviewer.ssl.ConnectionUtil;
@@ -76,8 +80,8 @@ import de.vier_bier.habpanelviewer.status.StatusInfoActivity;
 /**
  * Main activity showing the Webview for openHAB.
  */
-public class MainActivity extends AppCompatActivity
-        implements NavigationView.OnNavigationItemSelectedListener, ConnectionListener {
+public class MainActivity extends ScreenControllingActivity
+        implements NavigationView.OnNavigationItemSelectedListener, IConnectionListener {
 
     private final static int REQUEST_PICK_APPLICATION = 12352;
 
@@ -90,6 +94,7 @@ public class MainActivity extends AppCompatActivity
     private ServerDiscovery mDiscovery;
     private FlashHandler mFlashService;
     private IMotionDetector mMotionDetector;
+    private MotionVisualizer mMotionVisualizer;
     private BatteryMonitor mBatteryMonitor;
     private ConnectedIndicator mConnectedReporter;
     private ProximityMonitor mProximityMonitor;
@@ -98,6 +103,8 @@ public class MainActivity extends AppCompatActivity
     private TemperatureMonitor mTemperatureMonitor;
     private VolumeMonitor mVolumeMonitor;
     private CommandQueue mCommandQueue;
+    private ScreenCapturer mCapturer;
+    private Camera mCam;
 
     private TripleClickListener mTripleClickListener;
 
@@ -111,6 +118,10 @@ public class MainActivity extends AppCompatActivity
     }
 
     public void destroy() {
+        if (mCapturer != null) {
+            mCapturer = null;
+        }
+
         if (mFlashService != null) {
             mFlashService.terminate();
             mFlashService = null;
@@ -167,10 +178,12 @@ public class MainActivity extends AppCompatActivity
         }
 
         if (mCommandQueue != null) {
+            mCommandQueue.terminate();
             mCommandQueue = null;
         }
 
         mWebView.unregister();
+        EventBus.getDefault().unregister(this);
     }
 
     @Override
@@ -197,12 +210,17 @@ public class MainActivity extends AppCompatActivity
 
         final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainActivity.this);
 
-        mConnections = new ConnectionStatistics(this);
-        mServerConnection = new ServerConnection(this);
-        mServerConnection.addConnectionListener(this);
+        if (mServerConnection == null) {
+            mServerConnection = new ServerConnection(this);
+            mServerConnection.addConnectionListener(this);
+        }
+
+        if (mConnections == null) {
+            mConnections = new ConnectionStatistics(this);
+        }
 
         if (getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA)) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && mFlashService == null) {
                 try {
                     mFlashService = new FlashHandler(this, (CameraManager) getSystemService(Context.CAMERA_SERVICE));
                 } catch (CameraAccessException | IllegalAccessException e) {
@@ -210,20 +228,22 @@ public class MainActivity extends AppCompatActivity
                 }
             }
 
-            final SurfaceView motionView = findViewById(R.id.motionView);
+            if (mCam == null) {
+                mCam = new Camera(this, findViewById(R.id.previewView), prefs);
+            }
 
-            int scaledSize = getResources().getDimensionPixelSize(R.dimen.motionFontSize);
-            MotionVisualizer mv = new MotionVisualizer(motionView, navigationView, prefs, scaledSize);
+            if (mMotionVisualizer == null) {
+                int scaledSize = getResources().getDimensionPixelSize(R.dimen.motionFontSize);
+                final SurfaceView motionView = findViewById(R.id.motionView);
+                mMotionVisualizer = new MotionVisualizer(motionView, navigationView, prefs, mCam.getSensorOrientation(), scaledSize);
 
-            boolean newApi = prefs.getBoolean("pref_motion_detection_new_api", Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP);
-            if (newApi && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                mMotionDetector = new MotionDetectorCamera2(this, (CameraManager) getSystemService(Context.CAMERA_SERVICE), mv, this, mServerConnection);
-            } else {
-                mMotionDetector = new MotionDetector(this, mv, mServerConnection);
+                mMotionDetector = new MotionDetector(this, mCam, mMotionVisualizer, mServerConnection);
             }
         }
 
-        mDiscovery = new ServerDiscovery((NsdManager) getSystemService(Context.NSD_SERVICE));
+        if (mDiscovery == null) {
+            mDiscovery = new ServerDiscovery((NsdManager) getSystemService(Context.NSD_SERVICE));
+        }
 
         if (prefs.getBoolean("pref_first_start", true)) {
             SharedPreferences.Editor editor1 = prefs.edit();
@@ -276,41 +296,59 @@ public class MainActivity extends AppCompatActivity
             }
         }
 
-        mBatteryMonitor = new BatteryMonitor(this, mServerConnection);
-        mVolumeMonitor = new VolumeMonitor(this, (AudioManager) getSystemService(Context.AUDIO_SERVICE), mServerConnection);
-        mConnectedReporter = new ConnectedIndicator(this, mServerConnection);
+        if (mBatteryMonitor == null) {
+            mBatteryMonitor = new BatteryMonitor(this, mServerConnection);
+        }
+
+        if (mVolumeMonitor == null) {
+            mVolumeMonitor = new VolumeMonitor(this, (AudioManager) getSystemService(Context.AUDIO_SERVICE), mServerConnection);
+        }
+
+        if (mConnectedReporter == null) {
+            mConnectedReporter = new ConnectedIndicator(this, mServerConnection);
+        }
 
         SensorManager m = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        try {
-            mProximityMonitor = new ProximityMonitor(this, m, mServerConnection);
-        } catch (SensorMissingException e) {
-            Log.d("Habpanelview", "Could not create proximity monitor");
+        if (mProximityMonitor == null) {
+            try {
+                mProximityMonitor = new ProximityMonitor(this, m, mServerConnection);
+            } catch (SensorMissingException e) {
+                Log.d("Habpanelview", "Could not create proximity monitor");
+            }
         }
-        try {
-            mBrightnessMonitor = new BrightnessMonitor(this, m, mServerConnection);
-        } catch (SensorMissingException e) {
-            Log.d("Habpanelview", "Could not create brightness monitor");
+        if (mBrightnessMonitor == null) {
+            try {
+                mBrightnessMonitor = new BrightnessMonitor(this, m, mServerConnection);
+            } catch (SensorMissingException e) {
+                Log.d("Habpanelview", "Could not create brightness monitor");
+            }
         }
-        try {
-            mPressureMonitor = new PressureMonitor(this, m, mServerConnection);
-        } catch (SensorMissingException e) {
-            Log.d("Habpanelview", "Could not create pressure monitor");
+        if (mPressureMonitor == null) {
+            try {
+                mPressureMonitor = new PressureMonitor(this, m, mServerConnection);
+            } catch (SensorMissingException e) {
+                Log.d("Habpanelview", "Could not create pressure monitor");
+            }
         }
-        try {
-            mTemperatureMonitor = new TemperatureMonitor(this, m, mServerConnection);
-        } catch (SensorMissingException e) {
-            Log.d("Habpanelview", "Could not create temperature monitor");
+        if (mTemperatureMonitor == null) {
+            try {
+                mTemperatureMonitor = new TemperatureMonitor(this, m, mServerConnection);
+            } catch (SensorMissingException e) {
+                Log.d("Habpanelview", "Could not create temperature monitor");
+            }
         }
 
-        ScreenHandler mScreenHandler = new ScreenHandler((PowerManager) getSystemService(POWER_SERVICE), this);
-        mCommandQueue = new CommandQueue(this, mServerConnection);
-        mCommandQueue.addHandler(new InternalCommandHandler(this, mServerConnection));
-        mCommandQueue.addHandler(new AdminHandler(this));
-        mCommandQueue.addHandler(new BluetoothHandler(this, (BluetoothManager) getSystemService(BLUETOOTH_SERVICE)));
-        mCommandQueue.addHandler(mScreenHandler);
-        mCommandQueue.addHandler(new VolumeHandler(this, (AudioManager) getSystemService(Context.AUDIO_SERVICE)));
-        if (mFlashService != null) {
-            mCommandQueue.addHandler(mFlashService);
+        if (mCommandQueue == null) {
+            ScreenHandler mScreenHandler = new ScreenHandler((PowerManager) getSystemService(POWER_SERVICE), this);
+            mCommandQueue = new CommandQueue(this, mServerConnection);
+            mCommandQueue.addHandler(new InternalCommandHandler(this, mMotionDetector, mServerConnection));
+            mCommandQueue.addHandler(new AdminHandler(this));
+            mCommandQueue.addHandler(new BluetoothHandler(this, (BluetoothManager) getSystemService(BLUETOOTH_SERVICE)));
+            mCommandQueue.addHandler(mScreenHandler);
+            mCommandQueue.addHandler(new VolumeHandler(this, (AudioManager) getSystemService(Context.AUDIO_SERVICE)));
+            if (mFlashService != null) {
+                mCommandQueue.addHandler(mFlashService);
+            }
         }
 
         mRestartCount = getIntent().getIntExtra("restartCount", 0);
@@ -319,7 +357,7 @@ public class MainActivity extends AppCompatActivity
         mTextView = navHeader.findViewById(R.id.textView);
 
         mWebView = findViewById(R.id.activity_main_webview);
-        mWebView.initialize(new ConnectionListener() {
+        mWebView.initialize(new IConnectionListener() {
             @Override
             public void connected(String url) {
             }
@@ -334,6 +372,24 @@ public class MainActivity extends AppCompatActivity
         mTripleClickListener = new TripleClickListener(findViewById(R.id.drawer_layout));
         mWebView.setOnTouchListener(mTripleClickListener);
         mCommandQueue.addHandler(new WebViewHandler(mWebView));
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            MediaProjectionManager projectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+            startActivityForResult(projectionManager.createScreenCaptureIntent(), ScreenCapturer.REQUEST_MEDIA_PROJECTION);
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+
+        if (mMotionVisualizer != null) {
+            mMotionVisualizer.setDeviceRotation(getWindowManager().getDefaultDisplay().getRotation());
+        }
+
+        if (mCam != null) {
+            mCam.setDeviceRotation(getWindowManager().getDefaultDisplay().getRotation());
+        }
     }
 
     @Override
@@ -378,10 +434,29 @@ public class MainActivity extends AppCompatActivity
         return true;
     }
 
+    public ScreenCapturer getCapturer() {
+        return mCapturer;
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_PICK_APPLICATION && resultCode == RESULT_OK) {
             startActivity(data);
+        } else if (requestCode == ScreenCapturer.REQUEST_MEDIA_PROJECTION && resultCode == RESULT_OK
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+
+            MediaProjectionManager projectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+            MediaProjection projection = projectionManager.getMediaProjection(RESULT_OK, data);
+
+            DisplayMetrics metrics = new DisplayMetrics();
+            getWindowManager().getDefaultDisplay().getMetrics(metrics);
+
+            Point size = new Point();
+            getWindowManager().getDefaultDisplay().getSize(size);
+
+            if (mCapturer == null) {
+                mCapturer = new ScreenCapturer(projection, size.x, size.y, metrics.densityDpi);
+            }
         }
     }
 
@@ -397,7 +472,7 @@ public class MainActivity extends AppCompatActivity
         if (mFlashService == null) {
             status.set(getString(R.string.pref_flash), getString(R.string.unavailable));
         }
-        if (mMotionDetector == null) {
+        if (mMotionDetector == null || mCam == null || !mCam.isValid()) {
             status.set(getString(R.string.pref_motion), getString(R.string.unavailable));
         }
         if (mRestartCount != 0) {
@@ -502,10 +577,6 @@ public class MainActivity extends AppCompatActivity
 
         mTripleClickListener.updateFromPreferences(prefs);
 
-        if (mMotionDetector != null) {
-            mMotionDetector.updateFromPreferences(prefs);
-        }
-
         if (mProximityMonitor != null) {
             mProximityMonitor.updateFromPreferences(prefs);
         }
@@ -530,39 +601,39 @@ public class MainActivity extends AppCompatActivity
         mWebView.updateFromPreferences(prefs);
         mServerConnection.updateFromPreferences(prefs);
 
-        TextureView previewView = findViewById(R.id.previewView);
-        SurfaceView motionView = findViewById(R.id.motionView);
-        boolean showPreview = prefs.getBoolean("pref_motion_detection_preview", false);
-        boolean motionDetection = prefs.getBoolean("pref_motion_detection_enabled", false);
-        if (motionDetection) {
-            previewView.setVisibility(View.VISIBLE);
-            if (showPreview) {
-                previewView.getLayoutParams().height = 480;
-                previewView.getLayoutParams().width = 640;
-
-                motionView.setVisibility(View.VISIBLE);
-            } else {
-                // if we have no preview, we still need a visible
-                // TextureView in order to have a working motion detection.
-                // Resize it to 1x1pxs so it does not get in the way.
-                previewView.getLayoutParams().height = 1;
-                previewView.getLayoutParams().width = 1;
-
-                motionView.setVisibility(View.INVISIBLE);
-            }
-
-            previewView.setLayoutParams(previewView.getLayoutParams());
-            motionView.setLayoutParams(motionView.getLayoutParams());
-        } else {
-            previewView.setVisibility(View.INVISIBLE);
-            motionView.setVisibility(View.INVISIBLE);
-        }
+        updateMotionPreferences();
 
         if (prefs.getBoolean("pref_show_context_menu", true)) {
             registerForContextMenu(mWebView);
         } else {
             unregisterForContextMenu(mWebView);
         }
+    }
+
+    public void updateMotionPreferences() {
+        final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainActivity.this);
+
+        if (mCam != null) {
+            try {
+                mCam.updateFromPreferences(prefs);
+            } catch (CameraException e) {
+                Toast.makeText(this, "failed to update camera state from preferences", Toast.LENGTH_LONG).show();
+            }
+        }
+
+        if (mMotionDetector != null) {
+            mMotionDetector.updateFromPreferences(prefs);
+        }
+
+        SurfaceView motionView = findViewById(R.id.motionView);
+        boolean showPreview = prefs.getBoolean("pref_motion_detection_preview", false);
+
+        if (showPreview) {
+            motionView.setVisibility(View.VISIBLE);
+        } else {
+            motionView.setVisibility(View.INVISIBLE);
+        }
+        motionView.setLayoutParams(motionView.getLayoutParams());
     }
 
     @Override
@@ -574,6 +645,11 @@ public class MainActivity extends AppCompatActivity
         }
 
         super.onStop();
+    }
+
+    @Override
+    public View getScreenOnView() {
+        return mWebView;
     }
 
     @Override
@@ -660,8 +736,9 @@ public class MainActivity extends AppCompatActivity
 
     private void showPreferences() {
         Intent intent = new Intent(MainActivity.this, SetPreferenceActivity.class);
+        intent.putExtra("camera_enabled", mCam != null);
         intent.putExtra("flash_enabled", mFlashService != null);
-        intent.putExtra("motion_enabled", mMotionDetector != null);
+        intent.putExtra("motion_enabled", mMotionDetector != null && mCam != null && mCam.isValid());
         intent.putExtra("proximity_enabled", mProximityMonitor != null);
         intent.putExtra("pressure_enabled", mPressureMonitor != null);
         intent.putExtra("brightness_enabled", mBrightnessMonitor != null);

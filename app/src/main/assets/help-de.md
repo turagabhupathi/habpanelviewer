@@ -63,17 +63,25 @@ Eine andere Möglichkeit den Kiosk Modus zu aktivieren, ist an die URL den Param
 * ADMIN_LOCK_SCREEN: aktiviert die Bildschirmsperre (beötigt, das die App in den Einstellungen als Device Admin aktiviert ist)
 * SHOW_URL *url*: zeigt die angegebene Webseite
 * SHOW_DASHBOARD *dashboard*: zeigt die angegebene Habpanel Seite
-> Die funktioniert nur wenn HABPanel unter der Standard URL verfügbar ist. Wenn Sie eine angepasste HABPanel installation haben, benutzen Sie statt dessen SHOW_URL.
+> Dies funktioniert nur wenn HABPanel unter der Standard URL verfügbar ist. Wenn Sie eine angepasste HABPanel installation haben, benutzen Sie statt dessen SHOW_URL
 * SHOW_START_URL: zeigt die konfigurierte Startseite
 * RELOAD: lädt die angezeigte Seite neu
+* CAPTURE_SCREEN *image item*: macht einen Screenshot und sendet diesen an das openHAB image item 
+> Dies funktioniert nur mit Android Lollipop oder neuer und mit einem in openHAB definierten item vom Typ **Image**
+* CAPTURE_CAMERA *image item*: macht ein Foto und sendet dieses an das openHAB image item
+> Falls die Bilder zu dunkel sein sollten, erhöhen Sie die CAPTURE_CAMERA Verzögerung in den Einstellungen.
+* ENABLE_MOTION_DETECTION: aktiviert die Bewegungserkennung in den App Einstellungen
+* DISABLE_MOTION_DETECTION: deaktiviert die Bewegungserkennung in den App Einstellungen
+
 
 ### Kommando Log
 Zeigt die letzten 100 von HABPanelViewer prozessierten Kommandos. Der Status wird durch die Textfarbe angezeigt:
 * grün: Das Kommando wurde erfolgreich ausgeführt.
 * gelb: Das Kommando ist HABPanelViewer nicht bekannt.
+* grau: Das Kommando wird zur Zeit ausgeführt.
 * rot: Die Ausführung wurde aufgrund eines Fehlers abgebrochen.
 
-Im Fehlerfall wird außerdem noch die Fehlermeldung im Kommando Log angezeigt.
+Klicken Sie auf ein Kommando um die Details anuzeigen, falls es welche gibt.
 
 [zurück nach oben](#top)
 

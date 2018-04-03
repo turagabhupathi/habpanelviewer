@@ -19,7 +19,7 @@ import de.vier_bier.habpanelviewer.R;
  * Handler for FLASH_ON, FLASH_OFF, FLASH_BLINK commands.
  */
 @TargetApi(Build.VERSION_CODES.M)
-public class FlashHandler implements CommandHandler {
+public class FlashHandler implements ICommandHandler {
     private final Pattern BLINK_PATTERN = Pattern.compile("FLASH_BLINK ([0-9]+)");
 
     private final CameraManager mCameraManager;
@@ -47,30 +47,37 @@ public class FlashHandler implements CommandHandler {
     }
 
     @Override
-    public boolean handleCommand(String cmd) {
-        Matcher m = BLINK_PATTERN.matcher(cmd);
+    public boolean handleCommand(Command cmd) {
+        final String cmdStr = cmd.getCommand();
 
-        if ("FLASH_ON".equals(cmd)) {
+        Matcher m = BLINK_PATTERN.matcher(cmdStr);
+
+        if ("FLASH_ON".equals(cmdStr)) {
+            cmd.start();
             createController().enableFlash();
-        } else if ("FLASH_OFF".equals(cmd)) {
+        } else if ("FLASH_OFF".equals(cmdStr)) {
+            cmd.start();
             if (controller != null) {
                 controller.disableFlash();
             }
-        } else if ("FLASH_BLINK".equals(cmd)) {
+        } else if ("FLASH_BLINK".equals(cmdStr)) {
+            cmd.start();
             createController().pulseFlash(1000);
         } else if (m.matches()) {
             String value = m.group(1);
 
             try {
                 int length = Integer.parseInt(value);
+                cmd.start();
                 createController().pulseFlash(length);
             } catch (NumberFormatException e) {
-                Log.e("Habpanelview", "failed to parse length from command: " + cmd);
+                cmd.failed("failed to parse length from command");
             }
         } else {
             return false;
         }
 
+        cmd.finished();
         return true;
     }
 

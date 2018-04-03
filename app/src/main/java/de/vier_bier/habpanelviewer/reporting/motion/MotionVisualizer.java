@@ -1,5 +1,6 @@
 package de.vier_bier.habpanelviewer.reporting.motion;
 
+import android.app.Activity;
 import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -18,7 +19,7 @@ import de.vier_bier.habpanelviewer.R;
 /**
  * Visualizes motion areas on the given mSurface view.
  */
-public class MotionVisualizer implements MotionListener {
+public class MotionVisualizer implements IMotionListener {
     private final SurfaceView mMotionView;
     private final NavigationView mNavigationView;
     private final SharedPreferences mPreferences;
@@ -26,10 +27,17 @@ public class MotionVisualizer implements MotionListener {
     private final int mMotionTextWidth;
     private final int mDarkTextWidth;
 
-    public MotionVisualizer(SurfaceView motionView, NavigationView navigationView, SharedPreferences preferences, int scaledSize) {
+    private final int mCameraRotation;
+    private int mCorrectionAngle;
+
+    public MotionVisualizer(SurfaceView motionView, NavigationView navigationView, SharedPreferences preferences, int cameraRotation, int scaledSize) {
         mMotionView = motionView;
         mNavigationView = navigationView;
         mPreferences = preferences;
+        mCameraRotation = cameraRotation;
+
+        int newDeviceRotation = ((Activity) mMotionView.getContext()).getWindowManager().getDefaultDisplay().getRotation();
+        setDeviceRotation(newDeviceRotation);
 
         mMotionView.setZOrderOnTop(true);
         mMotionView.getHolder().setFormat(PixelFormat.TRANSPARENT);
@@ -81,12 +89,25 @@ public class MotionVisualizer implements MotionListener {
                     canvas.drawText(mNavigationView.getContext().getString(R.string.motion), (canvas.getWidth() - mMotionTextWidth) / 2, 50, mPaint);
 
                     for (Point p : differing) {
-                        canvas.drawRect(p.x * xsize, p.y * ysize, p.x * xsize + xsize, p.y * ysize + ysize, mPaint);
+                        Point c = correctSensorRotation(p, mCorrectionAngle, boxes);
+                        canvas.drawRect(c.x * xsize, c.y * ysize, c.x * xsize + xsize, c.y * ysize + ysize, mPaint);
                     }
                 } finally {
                     mMotionView.getHolder().unlockCanvasAndPost(canvas);
                 }
             }
+        }
+    }
+
+    private Point correctSensorRotation(Point p, int correctionAngle, int boxes) {
+        if (correctionAngle == 270) {
+            return new Point(boxes - 1 - p.y, boxes - 1 - p.x);
+        } else if (correctionAngle == 180) {
+            return new Point(boxes - 1 - p.x, p.y);
+        } else if (correctionAngle == 90) {
+            return new Point(p.y, boxes - 1 - p.x);
+        } else {
+            return new Point(p.x, boxes - 1 - p.y);
         }
     }
 
@@ -116,5 +137,9 @@ public class MotionVisualizer implements MotionListener {
                 mMotionView.getHolder().unlockCanvasAndPost(canvas);
             }
         }
+    }
+
+    public void setDeviceRotation(int newDeviceRotation) {
+        mCorrectionAngle = (mCameraRotation - newDeviceRotation * 90 + 360) % 360;
     }
 }
