@@ -44,6 +44,12 @@ public class CommandQueue implements IStateUpdateListener {
         }
     }
 
+    public void removeHandler(ICommandHandler h) {
+        synchronized (mHandlers) {
+            mHandlers.remove(h);
+        }
+    }
+
     @Override
     public void itemUpdated(String name, String value) {
         if (value != null && !value.isEmpty()) {

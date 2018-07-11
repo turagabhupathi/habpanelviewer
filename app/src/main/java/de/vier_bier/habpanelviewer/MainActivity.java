@@ -33,6 +33,7 @@ import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -108,6 +109,7 @@ public class MainActivity extends ScreenControllingActivity
     private CommandQueue mCommandQueue;
     private ScreenCapturer mCapturer;
     private Camera mCam;
+    private WebViewHandler mWebviewHandler;
 
     @Override
     protected void onDestroy() {
@@ -190,7 +192,6 @@ public class MainActivity extends ScreenControllingActivity
             mNetworkTracker.terminate();
             mNetworkTracker = null;
         }
-        mWebView.unregister();
         EventBus.getDefault().unregister(this);
     }
 
@@ -386,35 +387,10 @@ public class MainActivity extends ScreenControllingActivity
 
         mTextView = navHeader.findViewById(R.id.textView);
 
-        mWebView = findViewById(R.id.activity_main_webview);
-        mWebView.initialize(new IConnectionListener() {
-            @Override
-            public void connected(String url) {
-            }
-
-            @Override
-            public void disconnected() {
-                if (prefs.getBoolean("pref_track_browser_connection", false)) {
-                    mServerConnection.reconnect();
-                }
-            }
-        }, mNetworkTracker);
-        mCommandQueue.addHandler(new WebViewHandler(mWebView));
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             MediaProjectionManager projectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
             startActivityForResult(projectionManager.createScreenCaptureIntent(), ScreenCapturer.REQUEST_MEDIA_PROJECTION);
         }
-    }
-
-    @Override
-    public boolean dispatchTouchEvent(MotionEvent ev) {
-        //TODO.vb make item and timeout configurable and do this for all views.
-        boolean value = super.dispatchTouchEvent(ev);
-
-        if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
-        }
-        return value;
     }
 
     @Override
@@ -575,9 +551,30 @@ public class MainActivity extends ScreenControllingActivity
 
     @Override
     public void onStart() {
+        final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainActivity.this);
+
+        FrameLayout webContainer = findViewById(R.id.activity_main_web_container);
+        mWebView = new ClientWebView(getApplicationContext());
+        webContainer.addView(mWebView);
+
+        mWebView.initialize(new IConnectionListener() {
+            @Override
+            public void connected(String url) {
+            }
+
+            @Override
+            public void disconnected() {
+                if (prefs.getBoolean("pref_track_browser_connection", false)) {
+                    mServerConnection.reconnect();
+                }
+            }
+        }, mNetworkTracker);
+
         super.onStart();
 
-        final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainActivity.this);
+        mWebviewHandler = new WebViewHandler(mWebView);
+        mCommandQueue.addHandler(mWebviewHandler);
+
         NavigationView navigationView = findViewById(R.id.nav_view);
         DrawerLayout.LayoutParams params = (DrawerLayout.LayoutParams) navigationView.getLayoutParams();
         final String menuPos = prefs.getString("pref_menu_position", "");
@@ -653,6 +650,20 @@ public class MainActivity extends ScreenControllingActivity
 
     @Override
     protected void onStop() {
+        if (mWebviewHandler != null) {
+            mCommandQueue.removeHandler(mWebviewHandler);
+            mWebviewHandler = null;
+        }
+
+        if (mWebView != null) {
+            FrameLayout webContainer = findViewById(R.id.activity_main_web_container);
+
+            webContainer.removeAllViews();
+            mWebView.unregister();
+            mWebView.destroy();
+            mWebView = null;
+        }
+
         if (mDiscovery != null) {
             // stop discover onStop, but do not set mDiscovery to null as it will be reused
             // in onStart
